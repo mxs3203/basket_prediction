@@ -10,18 +10,20 @@ import tensorflow as tf
 import os
 import glob
 
+from parsing_exceptions import parse_files
+
 gpu = tf.config.experimental.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(gpu[0], True)
 
 def scheduler(epoch, lr):
-  if epoch < 25:
+  if epoch < 30:
     return lr
   else:
-    return lr * tf.math.exp(-0.1)
+    return lr * tf.math.exp(-0.01)
 early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=0, patience=20)
 checkpoints = tf.keras.callbacks.ModelCheckpoint("output/", monitor='val_loss', verbose=1, save_best_only=False,save_weights_only=False, mode='auto', save_freq='epoch',period = 10)
 schedule = tf.keras.callbacks.LearningRateScheduler(scheduler, verbose=1)
-BATCH_SIZE = 2048
+BATCH_SIZE = 1024
 EPOCHS = 300
 OPTIMIZER = tf.keras.optimizers.RMSprop(learning_rate=0.001)
 # OPTIMIZER = tf.keras.optimizers.Adam(learning_rate=0.001)
@@ -52,26 +54,13 @@ plot_losses = PlotLosses()
 
 def tokenise_words(inputs):
     tokenizer = Tokenizer()
-    sentances = []
-
-    for file in inputs:
-        with open(file) as csvfile:
-            lines = csvfile.readlines()
-            for l in lines:
-                l = l.replace(" ","_").replace("-", "_")
-                sentances.append(l.replace(",", " ").replace("&", "").strip())
-
-
+    corpus = parse_files(inputs)
     print("Example Input: ")
-    print(sentances[1])
-
-
-    corpus = sentances
-
+    print(corpus[1])
 
     tokenizer.fit_on_texts(corpus)
     total_words = len(tokenizer.word_index) + 1
-    print('Total unique words: ',total_words )
+    print('Total unique words: ', total_words)
     # create input sequences using list of tokens
     input_sequences = []
     for line in corpus:
@@ -84,14 +73,17 @@ def tokenise_words(inputs):
     max_sequence_len = np.mean(np.array(([len(x) for x in input_sequences])))
     max_sequence_len = int(max_sequence_len)
     print("Cutoff sequences: ",max_sequence_len)
-    input_sequences = np.array(pad_sequences(input_sequences, maxlen=max_sequence_len, padding='pre',truncating='pre'))
+    input_sequences = np.array(pad_sequences(input_sequences, maxlen=max_sequence_len, padding='pre', truncating='pre'))
     # create predictors and label
     predictors, label = input_sequences[:, :-1], input_sequences[:, -1]
 
     label = ku.to_categorical(label, num_classes=total_words)
     print('Combinations: ', len(predictors))
-    return predictors, label, max_sequence_len, total_words, tokenizer, sentances
+    return predictors, label, max_sequence_len, total_words, tokenizer, corpus
 
+def preprocess_sequences(line):
+
+    return line
 def make_model(total_words, max_sequence_len):
     model = Sequential()
     model.add(Embedding(total_words, 2000, input_length=max_sequence_len-1))
@@ -148,7 +140,7 @@ def main():
         print("Output from Model : ", make_tekst(inp, tokenizer, max_sequence_len, model))
     make_plot(history)
     print()
-    # print("Done...")
+    print("Done...")
 
 def make_tekst(seed_text, tokenizer, max_sequence_len, model):
     next_words = 2
